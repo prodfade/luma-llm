@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f3fa">
+  <meta name="description" content="A thoughtful personal AI workspace, powered by the models you choose.">
+  <title>Luma — Your AI space</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="auth-screen" id="authScreen" hidden>
+    <a class="auth-brand" href="/"><span class="brand-mark"><span></span></span><span>Luma</span></a>
+    <section class="auth-card">
+      <div class="auth-orb" aria-hidden="true"><span>✳</span></div>
+      <p class="eyebrow" id="authEyebrow">YOUR AI, YOUR SPACE</p>
+      <h1 id="authTitle">A little more you.</h1>
+      <p class="auth-copy" id="authCopy">Sign in to pick up where your thinking left off.</p>
+      <form id="authForm">
+        <label for="authEmail">Email address</label>
+        <input id="authEmail" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+        <label for="authPassword">Password</label>
+        <input id="authPassword" name="password" type="password" autocomplete="current-password" placeholder="At least 10 characters" minlength="10" required>
+        <p class="form-error" id="authError" aria-live="polite"></p>
+        <button class="button button-primary auth-submit" id="authSubmit" type="submit">Sign in <span>→</span></button>
+      </form>
+      <p class="auth-switch"><span id="switchLabel">New around here?</span> <button id="authSwitch" type="button">Create an account</button></p>
+      <p class="auth-privacy"><span>✦</span> Your conversations stay yours.</p>
+    </section>
+    <div class="auth-decoration decor-one"></div><div class="auth-decoration decor-two"></div>
+  </div>
+
+  <div class="app-shell" id="appShell" hidden>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <a class="brand" href="#" aria-label="Luma home"><span class="brand-mark"><span></span></span><span>Luma</span><span class="brand-beta">PERSONAL</span></a>
+        <button class="icon-button sidebar-close" id="sidebarClose" aria-label="Close navigation" title="Close navigation"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
+      <button class="new-chat-button" id="newChat"><span class="plus-icon">＋</span> New chat <kbd>⌘ K</kbd></button>
+      <div class="sidebar-tools">
+        <label class="search-box" for="chatSearch"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4.2 4.2"/></svg><input id="chatSearch" type="search" placeholder="Search chats"><kbd>⌘ /</kbd></label>
+      </div>
+      <div class="history-section"><div class="section-label">RECENT <span class="history-count" id="historyCount">0</span></div><div class="history-list" id="historyList"></div><div class="empty-history" id="emptyHistory"><span>✳</span><p>Your conversations will find a home here.</p></div></div>
+      <div class="sidebar-bottom">
+        <button class="side-link" id="settingsButton"><span class="settings-glyph">⚙</span> Settings & keys <span class="side-link-arrow">›</span></button>
+        <div class="profile-card"><div class="avatar" id="userAvatar">L</div><div class="profile-copy"><strong id="userEmail">Your account</strong><span>Personal workspace</span></div><button class="icon-button more-button" id="profileMenu" aria-label="Account menu"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button><div class="profile-popover" id="profilePopover" hidden><button id="signOut">Sign out <span>↗</span></button></div></div>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim"></div>
+    <main class="main-panel">
+      <header class="topbar">
+        <button class="icon-button menu-button" id="menuButton" aria-label="Open navigation"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <div class="topbar-context"><span class="topbar-dot"></span> Your personal space <span class="topbar-chevron">⌄</span></div>
+        <div class="topbar-actions"><span class="availability"><i></i> All systems ready</span><button class="theme-toggle" id="themeToggle" aria-label="Switch theme" title="Switch theme"><span class="theme-icon">☼</span></button></div>
+      </header>
+      <section class="conversation-view" id="conversationView">
+        <div class="welcome" id="welcomeView">
+          <div class="welcome-overline"><span class="overline-spark">✳</span> YOUR THOUGHTFUL AI SPACE</div>
+          <h1>Good things<br>start with <span>a thought.</span></h1>
+          <p class="welcome-subtitle">A little help with the big ideas, the tiny details, and everything in between.</p>
+          <div class="suggestion-grid">
+            <button class="suggestion suggestion-lilac" data-prompt="Help me turn a rough idea into a clear plan."><span class="suggestion-icon">↗</span><span><strong>Make a plan</strong><small>Turn a rough idea into a clear next step</small></span><span class="suggestion-arrow">↗</span></button>
+            <button class="suggestion suggestion-peach" data-prompt="Help me write a warm, clear email about "><span class="suggestion-icon">✎</span><span><strong>Write something</strong><small>Find just the right words</small></span><span class="suggestion-arrow">↗</span></button>
+            <button class="suggestion suggestion-blue" data-prompt="Explain this in a simple, intuitive way: "><span class="suggestion-icon">✳</span><span><strong>Make it click</strong><small>Get a fresh explanation</small></span><span class="suggestion-arrow">↗</span></button>
+            <button class="suggestion suggestion-green" data-prompt="Help me brainstorm a few surprising ideas for "><span class="suggestion-icon">⌘</span><span><strong>Think out loud</strong><small>Explore ideas, without the blank page</small></span><span class="suggestion-arrow">↗</span></button>
+          </div>
+          <div class="welcome-foot"><span class="tiny-spark">✦</span> One space. A couple of great minds. Yours to shape.</div>
+        </div>
+        <div class="messages" id="messages" hidden></div>
+      </section>
+      <footer class="composer-area">
+        <form class="composer" id="composerForm">
+          <textarea id="messageInput" rows="1" maxlength="24000" placeholder="Ask anything. Start anywhere." aria-label="Your message"></textarea>
+          <div class="composer-bottom"><div class="composer-tools"><span class="tool-divider"></span><label class="model-control" for="modelSelect"><span class="model-spark">✳</span><select id="modelSelect" aria-label="Choose a model"><option value="auto">Auto · choose for me</option><option value="groq">Groq · reasoning & code</option><option value="gemini">Gemini · everyday & creative</option></select><span class="select-caret">⌄</span></label><span class="model-hint" id="modelHint">Auto picks a model for each prompt</span></div><button class="send-button" id="sendButton" type="submit" aria-label="Send message" disabled><svg viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div>
+        </form>
+        <div class="composer-caption">Your words help the model respond. <span>Keep your API keys private in Render.</span></div>
+      </footer>
+    </main>
+    <dialog class="settings-dialog" id="settingsDialog"><form method="dialog"><button class="icon-button dialog-close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></form><div class="settings-heading"><span class="settings-orb">✳</span><div><p class="eyebrow">MAKE IT YOURS</p><h2>Settings & keys</h2></div></div><p class="settings-intro">Your model keys live on the server, never in your browser. Add them once in Render and Luma will take care of the rest.</p><div class="settings-key-card"><div class="key-provider-icon groq-icon">G</div><div class="key-info"><strong>Groq</strong><small>Fast answers, coding & deeper reasoning</small></div><span class="key-status" id="groqStatus">Set in Render</span></div><div class="settings-key-card"><div class="key-provider-icon gemini-icon">✦</div><div class="key-info"><strong>Gemini</strong><small>Creative ideas & everyday questions</small></div><span class="key-status" id="geminiStatus">Set in Render</span></div><div class="render-tip"><span>↗</span><p>In Render: open <b>luma-personal-llm → Environment</b>. Add <code>GROQ_API_KEY</code> and <code>GEMINI_API_KEY</code>, then save and deploy.</p></div><div class="settings-divider"></div><div class="settings-option"><div><strong>Appearance</strong><small>Pick a look that feels like you</small></div><div class="theme-options"><button data-theme-choice="light">☼ Light</button><button data-theme-choice="dark">☾ Dark</button><button data-theme-choice="system">◐ System</button></div></div><p class="settings-version">Luma · Personal AI workspace</p></dialog>
+  </div>
+</body>
+</html>
+
