@@ -9,12 +9,12 @@ const ui = {
   sendButton: $('#sendButton'), modelSelect: $('#modelSelect'), modelPicker: $('#modelPicker'), modelTrigger: $('#modelTrigger'),
   modelMenu: $('#modelMenu'), modelLabel: $('#modelLabel'), modelOptions: [...document.querySelectorAll('.model-option')],
   modelHint: $('#modelHint'), themeToggle: $('#themeToggle'),
-  settingsButton: $('#settingsButton'), settingsDialog: $('#settingsDialog'), groqStatus: $('#groqStatus'), geminiStatus: $('#geminiStatus'),
+  settingsButton: $('#settingsButton'), settingsDialog: $('#settingsDialog'), groqStatus: $('#groqStatus'), geminiStatus: $('#geminiStatus'), axforgeStatus: $('#axforgeStatus'),
   userEmail: $('#userEmail'), userAvatar: $('#userAvatar'), profileMenu: $('#profileMenu'), profilePopover: $('#profilePopover'),
   signOut: $('#signOut')
 };
 
-const state = { csrfToken: '', user: null, chats: [], activeChatId: null, authMode: 'login', providers: { groq: false, gemini: false }, sending: false };
+const state = { csrfToken: '', user: null, chats: [], activeChatId: null, authMode: 'login', providers: { groq: false, gemini: false, axforge: false }, sending: false };
 const safeText = value => String(value ?? '');
 
 function setTheme(theme) {
@@ -56,10 +56,12 @@ function enterApp(user, providers = state.providers) {
   ui.appShell.hidden = false;
   ui.userEmail.textContent = user.email;
   ui.userAvatar.textContent = user.email.slice(0, 1).toUpperCase();
-  ui.groqStatus.textContent = providers.groq ? 'Connected' : 'Add in Render';
-  ui.geminiStatus.textContent = providers.gemini ? 'Connected' : 'Add in Render';
+  ui.groqStatus.textContent = providers.groq ? 'Connected' : 'Add in Vercel';
+  ui.geminiStatus.textContent = providers.gemini ? 'Connected' : 'Add in Vercel';
+  ui.axforgeStatus.textContent = providers.axforge ? 'Connected' : 'Add in Vercel';
   ui.groqStatus.classList.toggle('configured', providers.groq);
   ui.geminiStatus.classList.toggle('configured', providers.gemini);
+  ui.axforgeStatus.classList.toggle('configured', providers.axforge);
 }
 
 function enterAuth() {
@@ -237,7 +239,7 @@ function appendMessage(role, content, meta = {}) {
   const name = document.createElement('strong'); name.textContent = role === 'assistant' ? 'Luma' : 'You';
   head.append(name);
   if (role === 'assistant' && meta.model) {
-    const model = document.createElement('span'); model.className = 'message-meta'; model.textContent = meta.model.replace(/^groq:/, 'Groq · ').replace(/^gemini:/, 'Gemini · '); head.append(model);
+    const model = document.createElement('span'); model.className = 'message-meta'; model.textContent = meta.model.replace(/^groq:/, 'Groq · ').replace(/^gemini:/, 'Gemini · ').replace(/^axforge:/, 'Qwen · AxForge · '); head.append(model);
   }
   const bubble = document.createElement('div'); bubble.className = 'message-bubble'; bubble.innerHTML = markdown(content);
   main.append(head, bubble);
@@ -303,7 +305,7 @@ async function submitMessage(message = ui.messageInput.value) {
         const payload = JSON.parse(dataLine);
         if (eventName === 'meta') {
           gotMeta = true;
-          const provider = payload.provider === 'groq' ? 'Groq' : 'Gemini';
+          const provider = payload.provider === 'groq' ? 'Groq' : payload.provider === 'gemini' ? 'Gemini' : 'Qwen · AxForge';
           const tag = document.createElement('span'); tag.className = 'message-meta'; tag.textContent = `${provider} · ${payload.reason}`;
           assistant.row.querySelector('.message-head').append(tag);
           ui.modelHint.textContent = `${provider} · ${payload.reason}`;
@@ -384,7 +386,8 @@ function chooseModel(value) {
   const model = {
     auto: { label: 'Auto · choose for me', hint: 'Auto picks a model for each prompt' },
     groq: { label: 'Groq · reasoning & code', hint: 'Groq · code & reasoning' },
-    gemini: { label: 'Gemini · everyday & creative', hint: 'Gemini · everyday & creative' }
+    gemini: { label: 'Gemini · everyday & creative', hint: 'Gemini · everyday & creative' },
+    axforge: { label: 'Qwen · AxForge', hint: 'Qwen · AxForge' }
   }[value];
   if (!model) return;
   ui.modelSelect.value = value;
