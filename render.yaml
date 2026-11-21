@@ -27,4 +27,8 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: QWEN_API_KEY
+        sync: false
+      - key: AXFORGE_MODEL
+        value: qwen3.8-27b-nvfp4
 
