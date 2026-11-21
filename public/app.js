@@ -6,7 +6,9 @@ const ui = {
   historyList: $('#historyList'), historyCount: $('#historyCount'), emptyHistory: $('#emptyHistory'), chatSearch: $('#chatSearch'),
   newChat: $('#newChat'), sidebar: $('#sidebar'), sidebarClose: $('#sidebarClose'), menuButton: $('#menuButton'), scrim: $('#scrim'),
   welcomeView: $('#welcomeView'), messages: $('#messages'), composerForm: $('#composerForm'), messageInput: $('#messageInput'),
-  sendButton: $('#sendButton'), modelSelect: $('#modelSelect'), modelHint: $('#modelHint'), themeToggle: $('#themeToggle'),
+  sendButton: $('#sendButton'), modelSelect: $('#modelSelect'), modelPicker: $('#modelPicker'), modelTrigger: $('#modelTrigger'),
+  modelMenu: $('#modelMenu'), modelLabel: $('#modelLabel'), modelOptions: [...document.querySelectorAll('.model-option')],
+  modelHint: $('#modelHint'), themeToggle: $('#themeToggle'),
   settingsButton: $('#settingsButton'), settingsDialog: $('#settingsDialog'), groqStatus: $('#groqStatus'), geminiStatus: $('#geminiStatus'),
   userEmail: $('#userEmail'), userAvatar: $('#userAvatar'), profileMenu: $('#profileMenu'), profilePopover: $('#profilePopover'),
   signOut: $('#signOut')
@@ -364,15 +366,65 @@ function resizeComposer() {
   ui.sendButton.disabled = state.sending || !ui.messageInput.value.trim();
 }
 
+function closeModelMenu(restoreFocus = false) {
+  ui.modelMenu.hidden = true;
+  ui.modelPicker.classList.remove('open');
+  ui.modelTrigger.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) ui.modelTrigger.focus();
+}
+
+function openModelMenu(focusSelected = true) {
+  ui.modelMenu.hidden = false;
+  ui.modelPicker.classList.add('open');
+  ui.modelTrigger.setAttribute('aria-expanded', 'true');
+  if (focusSelected) ui.modelOptions.find(option => option.dataset.model === ui.modelSelect.value)?.focus();
+}
+
+function chooseModel(value) {
+  const model = {
+    auto: { label: 'Auto · choose for me', hint: 'Auto picks a model for each prompt' },
+    groq: { label: 'Groq · reasoning & code', hint: 'Groq · code & reasoning' },
+    gemini: { label: 'Gemini · everyday & creative', hint: 'Gemini · everyday & creative' }
+  }[value];
+  if (!model) return;
+  ui.modelSelect.value = value;
+  ui.modelLabel.textContent = model.label;
+  ui.modelHint.textContent = model.hint;
+  ui.modelOptions.forEach(option => option.setAttribute('aria-selected', String(option.dataset.model === value)));
+  closeModelMenu(true);
+}
+
 ui.composerForm.addEventListener('submit', event => { event.preventDefault(); submitMessage(); });
 ui.messageInput.addEventListener('input', resizeComposer);
 ui.messageInput.addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); submitMessage(); }
 });
-ui.modelSelect.addEventListener('change', () => {
-  const text = { auto: 'Auto picks a model for each prompt', groq: 'Groq · code & reasoning', gemini: 'Gemini · everyday & creative' };
-  ui.modelHint.textContent = text[ui.modelSelect.value];
+ui.modelTrigger.addEventListener('click', () => ui.modelMenu.hidden ? openModelMenu() : closeModelMenu());
+ui.modelTrigger.addEventListener('keydown', event => {
+  if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
+    event.preventDefault();
+    openModelMenu();
+    if (event.key === 'ArrowUp') ui.modelOptions.at(-1)?.focus();
+  }
 });
+ui.modelOptions.forEach((option, index) => {
+  option.addEventListener('click', () => chooseModel(option.dataset.model));
+  option.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.preventDefault(); closeModelMenu(true); }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      ui.modelOptions[(index + step + ui.modelOptions.length) % ui.modelOptions.length].focus();
+    }
+    if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      ui.modelOptions[event.key === 'Home' ? 0 : ui.modelOptions.length - 1].focus();
+    }
+  });
+});
+ui.modelPicker.addEventListener('focusout', () => requestAnimationFrame(() => {
+  if (!ui.modelPicker.contains(document.activeElement)) closeModelMenu();
+}));
 document.querySelectorAll('.suggestion').forEach(button => button.addEventListener('click', () => {
   ui.messageInput.value = button.dataset.prompt;
   resizeComposer();
@@ -384,7 +436,10 @@ ui.themeToggle.addEventListener('click', () => setTheme(document.documentElement
 ui.settingsButton.addEventListener('click', () => ui.settingsDialog.showModal());
 document.querySelectorAll('[data-theme-choice]').forEach(button => button.addEventListener('click', () => setTheme(button.dataset.themeChoice)));
 ui.profileMenu.addEventListener('click', () => { ui.profilePopover.hidden = !ui.profilePopover.hidden; });
-document.addEventListener('click', event => { if (!ui.profilePopover.contains(event.target) && !ui.profileMenu.contains(event.target)) ui.profilePopover.hidden = true; });
+document.addEventListener('click', event => {
+  if (!ui.profilePopover.contains(event.target) && !ui.profileMenu.contains(event.target)) ui.profilePopover.hidden = true;
+  if (!ui.modelPicker.contains(event.target)) closeModelMenu();
+});
 ui.signOut.addEventListener('click', async () => {
   try { await api('/api/auth/logout', { method: 'POST', body: '{}' }); } catch (error) { toast(error.message); return; }
   state.csrfToken = '';
@@ -400,7 +455,7 @@ function closeSidebar() { ui.sidebar.classList.remove('open'); ui.scrim.classLis
 document.addEventListener('keydown', event => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); createChat(); }
   if ((event.metaKey || event.ctrlKey) && event.key === '/') { event.preventDefault(); ui.chatSearch.focus(); }
-  if (event.key === 'Escape') closeSidebar();
+  if (event.key === 'Escape') { closeSidebar(); if (!ui.modelMenu.hidden) closeModelMenu(true); }
 });
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (localStorage.getItem('luma-theme-choice') === 'system') setTheme('system'); });
 
