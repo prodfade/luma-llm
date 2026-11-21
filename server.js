@@ -319,15 +319,45 @@ app.post('/api/chats/:id/messages', requireUser, requireCsrf, chatLimiter, async
   res.set({ 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-  send('meta', { provider: selected.provider, model: selected.model, reason: selected.reason });
   let fullText = '';
+  let metaSent = false;
   const controller = new AbortController();
   res.on('close', () => { if (!res.writableEnded) controller.abort(); });
   try {
-    await streamCompletion({ provider: selected.provider, model: selected.model, messages, signal: controller.signal, onDelta: delta => {
-      fullText += delta;
-      send('delta', { text: delta });
-    }});
+    const primary = selected;
+    const alternateProvider = primary.provider === 'gemini' ? 'groq' : 'gemini';
+    const alternateKey = alternateProvider === 'groq' ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY;
+    const attempts = requestedModel === 'auto' && alternateKey
+      ? [primary, {
+          provider: alternateProvider,
+          model: alternateProvider === 'groq' ? process.env.GROQ_MODEL || 'openai/gpt-oss-120b' : process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+          reason: `${primary.provider === 'gemini' ? 'Gemini' : 'Groq'} unavailable · using ${alternateProvider === 'gemini' ? 'Gemini' : 'Groq'}`
+        }]
+      : [primary];
+    let completed = false;
+    for (const attempt of attempts) {
+      selected = attempt;
+      try {
+        await streamCompletion({ provider: selected.provider, model: selected.model, messages, signal: controller.signal, onDelta: delta => {
+          if (!metaSent) {
+            send('meta', { provider: selected.provider, model: selected.model, reason: selected.reason });
+            metaSent = true;
+          }
+          fullText += delta;
+          send('delta', { text: delta });
+        }});
+        completed = true;
+        break;
+      } catch (error) {
+        const hasAnotherAttempt = attempt !== attempts.at(-1);
+        if (!hasAnotherAttempt || fullText || error.name === 'AbortError') throw error;
+        console.warn(`Auto provider ${selected.provider} failed; trying ${attempts.at(-1).provider}:`, error.message);
+      }
+    }
+    if (completed && !metaSent) {
+      send('meta', { provider: selected.provider, model: selected.model, reason: selected.reason });
+      metaSent = true;
+    }
     if (!fullText) throw new Error('The model returned an empty answer. Try again.');
     await pool.query('INSERT INTO messages(chat_id,user_id,role,content,model) VALUES($1,$2,\'assistant\',$3,$4)', [chatId, req.session.userId, fullText, `${selected.provider}:${selected.model}`]);
     await pool.query('UPDATE chats SET updated_at=NOW() WHERE id=$1', [chatId]);
