@@ -224,7 +224,7 @@ html[data-theme="dark"] .response-error { border-color: #623d43; background: #38
 .settings-intro { margin: 0 0 17px; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .settings-key-card { display: flex; align-items: center; gap: 11px; margin: 8px 0; padding: 11px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-low); }
 .key-provider-icon { display: grid; width: 31px; height: 31px; flex: none; place-items: center; border-radius: 11px; font-size: 15px; font-weight: 700; }
-.groq-icon { background: #fce7dd; color: #e5582b; }.gemini-icon { background: #e8e8ff; color: #6261dc; }
+.groq-icon { background: #fce7dd; color: #e5582b; }.gemini-icon { background: #e8e8ff; color: #6261dc; }.axforge-icon,.axforge-option-icon { background: color-mix(in srgb,#36a98b 18%,var(--surface)); color: #16816c; }
 .key-info { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
 .key-info strong { font-size: 11px; }.key-info small { color: var(--muted); font-size: 9px; }
 .key-status { padding: 4px 7px; border-radius: 7px; background: var(--surface-high); color: var(--muted); font-size: 9px; font-weight: 600; white-space: nowrap; }
