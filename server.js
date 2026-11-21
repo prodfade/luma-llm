@@ -29,7 +29,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       scriptSrc: ["'self'"],
       imgSrc: ["'self'", 'data:'],
-      connectSrc: ["'self'", 'https://api.groq.com', 'https://generativelanguage.googleapis.com'],
+      connectSrc: ["'self'", 'https://api.groq.com', 'https://api.axforge.ai', 'https://generativelanguage.googleapis.com'],
       fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: []
@@ -119,16 +119,35 @@ function publicUser(user) {
   return { id: user.id, email: user.email, createdAt: user.created_at };
 }
 
+function providerModel(provider) {
+  if (provider === 'groq') return process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+  if (provider === 'gemini') return process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  return process.env.AXFORGE_MODEL || 'qwen3.8-27b-nvfp4';
+}
+
+function providerLabel(provider) {
+  return provider === 'groq' ? 'Groq' : provider === 'gemini' ? 'Gemini' : 'Qwen · AxForge';
+}
+
+function configuredProviders() {
+  return ['groq', 'gemini', 'axforge'].filter(provider => Boolean({
+    groq: process.env.GROQ_API_KEY,
+    gemini: process.env.GEMINI_API_KEY,
+    axforge: process.env.QWEN_API_KEY
+  }[provider]));
+}
+
 function autoRoute(text) {
   const content = text.toLowerCase();
-  const hasGroq = Boolean(process.env.GROQ_API_KEY);
-  const hasGemini = Boolean(process.env.GEMINI_API_KEY);
-  if (hasGroq && !hasGemini) return { provider: 'groq', model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b', reason: 'Only Groq is connected' };
-  if (hasGemini && !hasGroq) return { provider: 'gemini', model: process.env.GEMINI_MODEL || 'gemini-3.8-flash', reason: 'Only Gemini is connected' };
+  const available = configuredProviders();
   const coding = /\b(code|coding|program|programming|debug|typescript|javascript|python|sql|regex|api|compile|function|class|stack trace|bug|error|algorithm)\b/.test(content);
   const complexity = /\b(prove|derive|step by step|compare|trade-?offs|architecture|analyze|reasoning|deep dive|design a system)\b/.test(content);
-  if (coding || complexity) return { provider: 'groq', model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b', reason: coding ? 'Strong at code and debugging' : 'Selected for deeper analysis' };
-  return { provider: 'gemini', model: process.env.GEMINI_MODEL || 'gemini-3.8-flash', reason: 'Selected for fast everyday help' };
+  const preferred = coding || complexity ? 'groq' : 'gemini';
+  const provider = available.includes(preferred) ? preferred : available[0] || preferred;
+  const reason = available.length === 1 ? `Only ${providerLabel(provider)} is connected`
+    : provider === 'groq' ? (coding ? 'Strong at code and debugging' : 'Selected for deeper analysis')
+      : provider === 'gemini' ? 'Selected for fast everyday help' : 'Using your connected Qwen model';
+  return { provider, model: providerModel(provider), reason };
 }
 
 async function readSse(response, onData) {
@@ -156,11 +175,15 @@ async function readSse(response, onData) {
 }
 
 async function streamCompletion({ provider, model, messages, onDelta, signal }) {
-  if (provider === 'groq') {
-    if (!process.env.GROQ_API_KEY) throw new Error('Groq is not set up yet. Add GROQ_API_KEY in your deployment environment settings.');
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  if (provider === 'groq' || provider === 'axforge') {
+    const apiKey = provider === 'groq' ? process.env.GROQ_API_KEY : process.env.QWEN_API_KEY;
+    const providerName = providerLabel(provider);
+    const keyName = provider === 'groq' ? 'GROQ_API_KEY' : 'QWEN_API_KEY';
+    if (!apiKey) throw new Error(`${providerName} is not set up yet. Add ${keyName} in your deployment environment settings.`);
+    const endpoint = provider === 'groq' ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://api.axforge.ai/v1/chat/completions';
+    const response = await fetch(endpoint, {
       method: 'POST', signal,
-      headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, messages, stream: true, temperature: 0.7 })
     });
     await readSse(response, chunk => {
@@ -189,7 +212,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/session', asyncRoute(async (req, res) => {
   const csrfToken = csrfFor(req);
-  const providers = { groq: Boolean(process.env.GROQ_API_KEY), gemini: Boolean(process.env.GEMINI_API_KEY) };
+  const providers = { groq: Boolean(process.env.GROQ_API_KEY), gemini: Boolean(process.env.GEMINI_API_KEY), axforge: Boolean(process.env.QWEN_API_KEY) };
   if (!req.session.userId) return res.json({ user: null, csrfToken, providers });
   const { rows } = await pool.query('SELECT id,email,created_at FROM users WHERE id=$1', [req.session.userId]);
   if (!rows[0]) {
@@ -232,7 +255,7 @@ app.post('/api/auth/register', authLimiter, requireCsrf, asyncRoute(async (req, 
       if (error) return res.status(500).json({ error: 'Could not start your session. Try again.' });
       req.session.userId = user.id;
       csrfFor(req);
-      req.session.save(saveError => saveError ? res.status(500).json({ error: 'Could not start your session. Try again.' }) : res.json({ user: publicUser(user), csrfToken: req.session.csrfToken, providers: { groq: Boolean(process.env.GROQ_API_KEY), gemini: Boolean(process.env.GEMINI_API_KEY) } }));
+      req.session.save(saveError => saveError ? res.status(500).json({ error: 'Could not start your session. Try again.' }) : res.json({ user: publicUser(user), csrfToken: req.session.csrfToken, providers: { groq: Boolean(process.env.GROQ_API_KEY), gemini: Boolean(process.env.GEMINI_API_KEY), axforge: Boolean(process.env.QWEN_API_KEY) } }));
     });
   } catch { res.status(500).json({ error: 'Could not start your session. Try again.' }); }
 }));
@@ -246,7 +269,7 @@ app.post('/api/auth/login', authLimiter, requireCsrf, asyncRoute(async (req, res
     if (error) return res.status(500).json({ error: 'Could not start your session. Try again.' });
     req.session.userId = rows[0].id;
     csrfFor(req);
-    req.session.save(saveError => saveError ? res.status(500).json({ error: 'Could not start your session. Try again.' }) : res.json({ user: publicUser(rows[0]), csrfToken: req.session.csrfToken, providers: { groq: Boolean(process.env.GROQ_API_KEY), gemini: Boolean(process.env.GEMINI_API_KEY) } }));
+    req.session.save(saveError => saveError ? res.status(500).json({ error: 'Could not start your session. Try again.' }) : res.json({ user: publicUser(rows[0]), csrfToken: req.session.csrfToken, providers: { groq: Boolean(process.env.GROQ_API_KEY), gemini: Boolean(process.env.GEMINI_API_KEY), axforge: Boolean(process.env.QWEN_API_KEY) } }));
   });
 }));
 
@@ -301,9 +324,8 @@ app.post('/api/chats/:id/messages', requireUser, requireCsrf, chatLimiter, async
 
   let selected;
   if (requestedModel === 'auto') selected = autoRoute(text);
-  else if (requestedModel === 'groq') selected = { provider: 'groq', model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b', reason: 'Chosen manually' };
-  else if (requestedModel === 'gemini') selected = { provider: 'gemini', model: process.env.GEMINI_MODEL || 'gemini-3.8-flash', reason: 'Chosen manually' };
-  else return res.status(400).json({ error: 'Choose Auto, Groq, or Gemini.' });
+  else if (['groq', 'gemini', 'axforge'].includes(requestedModel)) selected = { provider: requestedModel, model: providerModel(requestedModel), reason: 'Chosen manually' };
+  else return res.status(400).json({ error: 'Choose Auto, Groq, Gemini, or Qwen · AxForge.' });
 
   await pool.query('INSERT INTO messages(chat_id,user_id,role,content) VALUES($1,$2,\'user\',$3)', [chatId, req.session.userId, text]);
   if (chats[0].title === 'New chat') {
@@ -325,14 +347,10 @@ app.post('/api/chats/:id/messages', requireUser, requireCsrf, chatLimiter, async
   res.on('close', () => { if (!res.writableEnded) controller.abort(); });
   try {
     const primary = selected;
-    const alternateProvider = primary.provider === 'gemini' ? 'groq' : 'gemini';
-    const alternateKey = alternateProvider === 'groq' ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY;
-    const attempts = requestedModel === 'auto' && alternateKey
-      ? [primary, {
-          provider: alternateProvider,
-          model: alternateProvider === 'groq' ? process.env.GROQ_MODEL || 'openai/gpt-oss-120b' : process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-          reason: `${primary.provider === 'gemini' ? 'Gemini' : 'Groq'} unavailable · using ${alternateProvider === 'gemini' ? 'Gemini' : 'Groq'}`
-        }]
+    const attempts = requestedModel === 'auto'
+      ? [primary, ...configuredProviders().filter(provider => provider !== primary.provider).map(provider => ({
+          provider, model: providerModel(provider), reason: `${providerLabel(primary.provider)} unavailable · using ${providerLabel(provider)}`
+        }))]
       : [primary];
     let completed = false;
     for (const attempt of attempts) {
@@ -351,7 +369,7 @@ app.post('/api/chats/:id/messages', requireUser, requireCsrf, chatLimiter, async
       } catch (error) {
         const hasAnotherAttempt = attempt !== attempts.at(-1);
         if (!hasAnotherAttempt || fullText || error.name === 'AbortError') throw error;
-        console.warn(`Auto provider ${selected.provider} failed; trying ${attempts.at(-1).provider}:`, error.message);
+        console.warn(`Auto provider ${selected.provider} failed; trying ${attempts[attempts.indexOf(attempt) + 1].provider}:`, error.message);
       }
     }
     if (completed && !metaSent) {
