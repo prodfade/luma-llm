@@ -184,8 +184,9 @@ html[data-theme="dark"] .response-error { border-color: #623d43; background: #38
 .tool-divider { width: 1px; height: 18px; background: var(--line); }
 .model-control { display: flex; max-width: 215px; align-items: center; gap: 5px; color: var(--primary-strong); }
 .model-spark { font-size: 13px; }
-.model-control select { max-width: 182px; appearance: none; border: 0; outline: 0; background: transparent; color: var(--ink-soft); font-size: 10px; font-weight: 600; cursor: pointer; }
-.model-control option { color: #25212e; }
+.model-control select { max-width: 182px; appearance: none; border: 0; outline: 0; background: transparent; color: var(--ink-soft); color-scheme: inherit; font-size: 10px; font-weight: 600; cursor: pointer; }
+.model-control option { background: var(--surface); color: var(--ink); }
+.model-control option:checked { background: var(--primary); color: #fff; }
 .select-caret { margin-left: -4px; color: var(--muted); font-size: 15px; pointer-events: none; }
 .model-hint { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .send-button { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border: 0; border-radius: 12px; background: var(--primary); color: #fff; box-shadow: 0 3px 8px color-mix(in srgb,var(--primary) 30%,transparent); transition: transform .2s var(--ease),opacity .2s,background .2s; }
