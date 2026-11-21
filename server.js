@@ -157,7 +157,7 @@ async function readSse(response, onData) {
 
 async function streamCompletion({ provider, model, messages, onDelta, signal }) {
   if (provider === 'groq') {
-    if (!process.env.GROQ_API_KEY) throw new Error('Groq is not set up yet. Add GROQ_API_KEY in Render Environment settings.');
+    if (!process.env.GROQ_API_KEY) throw new Error('Groq is not set up yet. Add GROQ_API_KEY in your deployment environment settings.');
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST', signal,
       headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
@@ -169,7 +169,7 @@ async function streamCompletion({ provider, model, messages, onDelta, signal }) 
     });
     return;
   }
-  if (!process.env.GEMINI_API_KEY) throw new Error('Gemini is not set up yet. Add GEMINI_API_KEY in Render Environment settings.');
+  if (!process.env.GEMINI_API_KEY) throw new Error('Gemini is not set up yet. Add GEMINI_API_KEY in your deployment environment settings.');
   const contents = messages.map(message => ({
     role: message.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: message.content }]
@@ -213,7 +213,7 @@ app.post('/api/auth/register', authLimiter, requireCsrf, asyncRoute(async (req, 
       const { rows: existing } = await client.query('SELECT EXISTS(SELECT 1 FROM users) AS has_users');
       if (existing[0].has_users) {
         await client.query('ROLLBACK');
-        return res.status(403).json({ error: 'This personal workspace already has an account. Sign in, or enable ALLOW_SIGNUP in Render to allow more accounts.' });
+        return res.status(403).json({ error: 'This personal workspace already has an account. Sign in, or enable ALLOW_SIGNUP in your deployment settings to allow more accounts.' });
       }
     }
     const { rows } = await client.query('INSERT INTO users(email,password_hash) VALUES($1,$2) RETURNING id,email,created_at', [email, hashPassword(password)]);
