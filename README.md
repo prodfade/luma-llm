@@ -7,6 +7,7 @@ A private, responsive chat workspace with a Material 3 expressive interface, Gro
 - Account registration and sign-in with scrypt password hashes, secure session cookies, rate limits, and CSRF protection.
 - User-owned conversations and messages stored in PostgreSQL.
 - Server-streamed answers from Groq, Gemini, or AxForge Qwen. Provider keys stay on the server.
+- Upload up to eight images (6 MB total) per message, preview them before sending, and keep image context with saved conversations. Auto uses AxForge Qwen or Gemini to understand images.
 - Auto mode routes coding and analysis prompts to Groq and everyday prompts to Gemini, with configured providers as fallbacks. If one provider key is set, Auto uses it.
 - Manual provider selection, conversation search, copy/regenerate actions, keyboard shortcuts, and light/dark/system themes.
 
