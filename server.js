@@ -36,7 +36,7 @@ app.use(helmet({
     }
   }
 }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '10mb' }));
 app.use(session({
   store: new PgSession({ pool, tableName: 'user_sessions', createTableIfMissing: true }),
   secret: process.env.SESSION_SECRET || 'local-development-only-change-before-deploy',
@@ -80,10 +80,12 @@ await pool.query(`
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
     content TEXT NOT NULL,
+    attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
     model TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
   CREATE INDEX IF NOT EXISTS messages_chat_created_idx ON messages(chat_id, created_at);
+  ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachments JSONB NOT NULL DEFAULT '[]'::jsonb;
 `);
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
@@ -137,9 +139,14 @@ function configuredProviders() {
   }[provider]));
 }
 
-function autoRoute(text) {
+function autoRoute(text, hasImages = false) {
   const content = text.toLowerCase();
   const available = configuredProviders();
+  if (hasImages) {
+    const provider = ['axforge', 'gemini'].find(candidate => available.includes(candidate));
+    if (!provider) return null;
+    return { provider, model: providerModel(provider), reason: `Best fit for images · ${providerLabel(provider)}` };
+  }
   const coding = /\b(code|coding|program|programming|debug|typescript|javascript|python|sql|regex|api|compile|function|class|stack trace|bug|error|algorithm)\b/.test(content);
   const complexity = /\b(prove|derive|step by step|compare|trade-?offs|architecture|analyze|reasoning|deep dive|design a system)\b/.test(content);
   const preferred = coding || complexity ? 'groq' : 'gemini';
@@ -195,7 +202,12 @@ async function streamCompletion({ provider, model, messages, onDelta, signal }) 
   if (!process.env.GEMINI_API_KEY) throw new Error('Gemini is not set up yet. Add GEMINI_API_KEY in your deployment environment settings.');
   const contents = messages.map(message => ({
     role: message.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: message.content }]
+    parts: (Array.isArray(message.content) ? message.content : [{ type: 'text', text: message.content }]).flatMap(part => {
+      if (part.type === 'text') return part.text ? [{ text: part.text }] : [];
+      const url = part.image_url?.url || '';
+      const match = url.match(/^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/);
+      return match ? [{ inlineData: { mimeType: match[1], data: match[2] } }] : [];
+    })
   }));
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
     method: 'POST', signal,
@@ -296,7 +308,7 @@ app.post('/api/chats', requireUser, requireCsrf, asyncRoute(async (req, res) => 
 app.get('/api/chats/:id', requireUser, asyncRoute(async (req, res) => {
   const { rows: chats } = await pool.query('SELECT id,title,created_at,updated_at FROM chats WHERE id=$1 AND user_id=$2', [req.params.id, req.session.userId]);
   if (!chats[0]) return res.status(404).json({ error: 'Chat not found.' });
-  const { rows: messages } = await pool.query('SELECT id,role,content,model,created_at FROM messages WHERE chat_id=$1 AND user_id=$2 ORDER BY created_at ASC', [req.params.id, req.session.userId]);
+  const { rows: messages } = await pool.query('SELECT id,role,content,attachments,model,created_at FROM messages WHERE chat_id=$1 AND user_id=$2 ORDER BY created_at ASC', [req.params.id, req.session.userId]);
   res.json({ chat: chats[0], messages });
 }));
 
@@ -318,24 +330,49 @@ app.post('/api/chats/:id/messages', requireUser, requireCsrf, chatLimiter, async
   const chatId = req.params.id;
   const text = String(req.body.message || '').trim();
   const requestedModel = String(req.body.model || 'auto');
-  if (!text || text.length > 24000) return res.status(400).json({ error: 'Write a message up to 24,000 characters.' });
+  if (text.length > 24000) return res.status(400).json({ error: 'Write a message up to 24,000 characters.' });
+  const incomingAttachments = req.body.attachments ?? [];
+  if (!Array.isArray(incomingAttachments) || incomingAttachments.length > 8) return res.status(400).json({ error: 'Add up to 8 images per message.' });
+  let imageBytes = 0;
+  const attachments = [];
+  for (const item of incomingAttachments) {
+    const dataUrl = String(item?.dataUrl || '');
+    const match = dataUrl.match(/^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/);
+    if (!match || item?.mimeType !== match[1]) return res.status(400).json({ error: 'One of those images could not be read. Please upload it again.' });
+    const bytes = Math.floor(match[2].length * 3 / 4) - (match[2].endsWith('==') ? 2 : match[2].endsWith('=') ? 1 : 0);
+    imageBytes += bytes;
+    if (imageBytes > 6 * 1024 * 1024) return res.status(413).json({ error: 'Keep images under 6 MB total per message.' });
+    attachments.push({ name: String(item.name || 'Uploaded image').slice(0, 160), mimeType: match[1], dataUrl });
+  }
+  if (!text && !attachments.length) return res.status(400).json({ error: 'Write a message or add an image.' });
   const { rows: chats } = await pool.query('SELECT id,title FROM chats WHERE id=$1 AND user_id=$2', [chatId, req.session.userId]);
   if (!chats[0]) return res.status(404).json({ error: 'Chat not found.' });
 
   let selected;
-  if (requestedModel === 'auto') selected = autoRoute(text);
+  if (requestedModel === 'auto') selected = autoRoute(text, attachments.length > 0);
   else if (['groq', 'gemini', 'axforge'].includes(requestedModel)) selected = { provider: requestedModel, model: providerModel(requestedModel), reason: 'Chosen manually' };
   else return res.status(400).json({ error: 'Choose Auto, Groq, Gemini, or Qwen · AxForge.' });
+  if (attachments.length && requestedModel === 'auto' && !selected) return res.status(400).json({ error: 'Image understanding needs Qwen · AxForge or Gemini. Add QWEN_API_KEY or GEMINI_API_KEY in Vercel.' });
+  if (attachments.length && selected.provider === 'groq') {
+    const visionProvider = ['axforge', 'gemini'].find(provider => configuredProviders().includes(provider));
+    if (!visionProvider) return res.status(400).json({ error: 'Image understanding needs Qwen · AxForge or Gemini. Add QWEN_API_KEY or GEMINI_API_KEY in Vercel.' });
+    selected = { provider: visionProvider, model: providerModel(visionProvider), reason: `Images need vision · using ${providerLabel(visionProvider)}` };
+  }
 
-  await pool.query('INSERT INTO messages(chat_id,user_id,role,content) VALUES($1,$2,\'user\',$3)', [chatId, req.session.userId, text]);
+  await pool.query('INSERT INTO messages(chat_id,user_id,role,content,attachments) VALUES($1,$2,\'user\',$3,$4::jsonb)', [chatId, req.session.userId, text, JSON.stringify(attachments)]);
   if (chats[0].title === 'New chat') {
-    const title = text.replace(/\s+/g, ' ').slice(0, 58) || 'New chat';
+    const title = text.replace(/\s+/g, ' ').slice(0, 58) || (attachments.length ? 'Image question' : 'New chat');
     await pool.query('UPDATE chats SET title=$1,updated_at=NOW() WHERE id=$2', [title, chatId]);
   } else {
     await pool.query('UPDATE chats SET updated_at=NOW() WHERE id=$1', [chatId]);
   }
-  const { rows: history } = await pool.query('SELECT role,content FROM messages WHERE chat_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 30', [chatId, req.session.userId]);
-  const messages = history.reverse().map(({ role, content }) => ({ role, content }));
+  const { rows: history } = await pool.query('SELECT role,content,attachments FROM messages WHERE chat_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 30', [chatId, req.session.userId]);
+  const messages = history.reverse().map(({ role, content, attachments: messageAttachments = [] }) => ({
+    role,
+    content: role === 'user' && messageAttachments.length
+      ? [...(content ? [{ type: 'text', text: content }] : []), ...messageAttachments.map(image => ({ type: 'image_url', image_url: { url: image.dataUrl } }))]
+      : content
+  }));
 
   res.status(200);
   res.set({ 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
@@ -348,7 +385,7 @@ app.post('/api/chats/:id/messages', requireUser, requireCsrf, chatLimiter, async
   try {
     const primary = selected;
     const attempts = requestedModel === 'auto'
-      ? [primary, ...configuredProviders().filter(provider => provider !== primary.provider).map(provider => ({
+      ? [primary, ...(attachments.length ? ['axforge', 'gemini'].filter(provider => configuredProviders().includes(provider)) : configuredProviders()).filter(provider => provider !== primary.provider).map(provider => ({
           provider, model: providerModel(provider), reason: `${providerLabel(primary.provider)} unavailable · using ${providerLabel(provider)}`
         }))]
       : [primary];
