@@ -179,8 +179,16 @@ html[data-theme="dark"] .response-error { border-color: #623d43; background: #38
 .composer-bottom { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
 .composer-tools { display: flex; min-width: 0; align-items: center; gap: 10px; }
 .composer-tool { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--muted); }
-.attachment-tool { cursor: not-allowed; opacity: .55; }
-.attachment-tool span { font-size: 20px; line-height: 1; }
+.attachment-tool { flex: none; color: var(--primary-strong); cursor: pointer; }
+.attachment-tool:hover { background: var(--primary-pale); }
+.attachment-tool svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.attachment-preview { display: flex; flex-wrap: wrap; gap: 8px; padding: 9px 1px 2px; }
+.attachment-preview-item { position: relative; width: 58px; height: 58px; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-low); }
+.attachment-preview-item img { width: 100%; height: 100%; object-fit: cover; }
+.attachment-remove { position: absolute; top: 3px; right: 3px; display: grid; width: 19px; height: 19px; place-items: center; border: 0; border-radius: 50%; background: color-mix(in srgb,var(--ink) 74%,transparent); color: white; font-size: 15px; line-height: 1; cursor: pointer; }
+.message-images { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 9px; }
+.message-image { display: block; max-width: min(100%,360px); overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--surface-low); }
+.message-image img { display: block; max-width: 100%; max-height: 360px; object-fit: contain; }
 .tool-divider { width: 1px; height: 18px; background: var(--line); }
 .model-picker { position: relative; z-index: 8; color: var(--primary-strong); }
 .model-trigger { display: inline-flex; min-height: 34px; max-width: 216px; align-items: center; gap: 7px; padding: 0 9px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--ink-soft); font-size: 10px; font-weight: 650; cursor: pointer; transition: background .2s var(--ease), border-color .2s, color .2s, transform .2s var(--ease); }
@@ -299,5 +307,5 @@ html[data-theme="dark"] .auth-orb { background: #302648; color: #c4afff; }
   .messages { padding-top: 9px; }.message-row { gap: 9px; margin-bottom: 20px; }.message-avatar { width: 27px; height: 27px; border-radius: 10px; }
   .auth-brand { top: 18px; left: 19px; }.auth-card { padding: 28px 24px 23px; }.auth-screen { padding: 54px 16px 24px; }.decor-one { top: 10%; right: -17%; }.decor-two { bottom: 3%; left: -18%; }
 }
-@media (max-width: 370px) { .suggestion { min-height: 77px; }.suggestion small { display: none; }.model-trigger { max-width: 150px; padding: 0 6px; gap: 5px; }.model-menu { width: min(278px,calc(100vw - 24px)); }.attachment-tool { display: none; } }
+@media (max-width: 370px) { .suggestion { min-height: 77px; }.suggestion small { display: none; }.model-trigger { max-width: 150px; padding: 0 6px; gap: 5px; }.model-menu { width: min(278px,calc(100vw - 24px)); } }
 
