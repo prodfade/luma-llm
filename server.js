@@ -188,11 +188,25 @@ async function streamCompletion({ provider, model, messages, onDelta, signal }) 
     const keyName = provider === 'groq' ? 'GROQ_API_KEY' : 'QWEN_API_KEY';
     if (!apiKey) throw new Error(`${providerName} is not set up yet. Add ${keyName} in your deployment environment settings.`);
     const endpoint = provider === 'groq' ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://api.axforge.ai/v1/chat/completions';
+    const hasImages = messages.some(message => Array.isArray(message.content) && message.content.some(part => part.type === 'image_url'));
     const response = await fetch(endpoint, {
       method: 'POST', signal,
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, stream: true, temperature: 0.7 })
+      body: JSON.stringify({ model, messages, stream: !(provider === 'axforge' && hasImages), temperature: 0.7 })
     });
+    if (provider === 'axforge' && hasImages) {
+      if (!response.ok) {
+        const body = await response.text();
+        let message = `AxForge request failed (${response.status}).`;
+        try { message = JSON.parse(body).error?.message || message; } catch {}
+        throw new Error(message);
+      }
+      const result = await response.json();
+      const answer = result.choices?.[0]?.message?.content;
+      if (typeof answer === 'string' && answer) onDelta(answer);
+      else if (Array.isArray(answer)) onDelta(answer.map(part => part.text || '').join(''));
+      return;
+    }
     await readSse(response, chunk => {
       const delta = chunk.choices?.[0]?.delta?.content;
       if (typeof delta === 'string' && delta) onDelta(delta);
@@ -370,7 +384,7 @@ app.post('/api/chats/:id/messages', requireUser, requireCsrf, chatLimiter, async
   const messages = history.reverse().map(({ role, content, attachments: messageAttachments = [] }) => ({
     role,
     content: role === 'user' && messageAttachments.length
-      ? [...(content ? [{ type: 'text', text: content }] : []), ...messageAttachments.map(image => ({ type: 'image_url', image_url: { url: image.dataUrl } }))]
+      ? [{ type: 'text', text: content || 'Please describe the attached image.' }, ...messageAttachments.map(image => ({ type: 'image_url', image_url: { url: image.dataUrl } }))]
       : content
   }));
 
@@ -384,7 +398,7 @@ app.post('/api/chats/:id/messages', requireUser, requireCsrf, chatLimiter, async
   res.on('close', () => { if (!res.writableEnded) controller.abort(); });
   try {
     const primary = selected;
-    const attempts = requestedModel === 'auto'
+    const attempts = requestedModel === 'auto' || attachments.length
       ? [primary, ...(attachments.length ? ['axforge', 'gemini'].filter(provider => configuredProviders().includes(provider)) : configuredProviders()).filter(provider => provider !== primary.provider).map(provider => ({
           provider, model: providerModel(provider), reason: `${providerLabel(primary.provider)} unavailable · using ${providerLabel(provider)}`
         }))]
