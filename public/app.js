@@ -6,6 +6,7 @@ const ui = {
   historyList: $('#historyList'), historyCount: $('#historyCount'), emptyHistory: $('#emptyHistory'), chatSearch: $('#chatSearch'),
   newChat: $('#newChat'), sidebar: $('#sidebar'), sidebarClose: $('#sidebarClose'), menuButton: $('#menuButton'), scrim: $('#scrim'),
   welcomeView: $('#welcomeView'), messages: $('#messages'), composerForm: $('#composerForm'), messageInput: $('#messageInput'),
+  imageInput: $('#imageInput'), uploadImageButton: $('#uploadImageButton'), attachmentPreview: $('#attachmentPreview'),
   sendButton: $('#sendButton'), modelSelect: $('#modelSelect'), modelPicker: $('#modelPicker'), modelTrigger: $('#modelTrigger'),
   modelMenu: $('#modelMenu'), modelLabel: $('#modelLabel'), modelOptions: [...document.querySelectorAll('.model-option')],
   modelHint: $('#modelHint'), themeToggle: $('#themeToggle'),
@@ -14,7 +15,7 @@ const ui = {
   signOut: $('#signOut')
 };
 
-const state = { csrfToken: '', user: null, chats: [], activeChatId: null, authMode: 'login', providers: { groq: false, gemini: false, axforge: false }, sending: false };
+const state = { csrfToken: '', user: null, chats: [], activeChatId: null, authMode: 'login', providers: { groq: false, gemini: false, axforge: false }, sending: false, pendingImages: [] };
 const safeText = value => String(value ?? '');
 
 function setTheme(theme) {
@@ -181,7 +182,7 @@ async function openChat(chatId) {
     ui.welcomeView.hidden = true;
     ui.messages.hidden = false;
     ui.messages.replaceChildren();
-    for (const message of messages) appendMessage(message.role, message.content, { model: message.model, timestamp: message.created_at });
+    for (const message of messages) appendMessage(message.role, message.content, { model: message.model, timestamp: message.created_at, attachments: message.attachments || [] });
     renderHistory();
     scrollConversation();
     closeSidebar();
@@ -241,7 +242,9 @@ function appendMessage(role, content, meta = {}) {
   if (role === 'assistant' && meta.model) {
     const model = document.createElement('span'); model.className = 'message-meta'; model.textContent = meta.model.replace(/^groq:/, 'Groq · ').replace(/^gemini:/, 'Gemini · ').replace(/^axforge:/, 'Qwen · AxForge · '); head.append(model);
   }
-  const bubble = document.createElement('div'); bubble.className = 'message-bubble'; bubble.innerHTML = markdown(content);
+  const bubble = document.createElement('div'); bubble.className = 'message-bubble';
+  if (meta.attachments?.length) renderMessageImages(bubble, meta.attachments);
+  if (content) bubble.insertAdjacentHTML('beforeend', markdown(content));
   main.append(head, bubble);
   if (role === 'assistant' && content) {
     const actions = document.createElement('div'); actions.className = 'message-actions';
@@ -252,6 +255,41 @@ function appendMessage(role, content, meta = {}) {
   row.append(avatar, main);
   ui.messages.append(row);
   return { row, bubble, main };
+}
+
+function renderMessageImages(container, attachments) {
+  const gallery = document.createElement('div'); gallery.className = 'message-images';
+  for (const attachment of attachments) {
+    if (!attachment.dataUrl || !/^data:image\/(?:png|jpeg|webp|gif);base64,/.test(attachment.dataUrl)) continue;
+    const link = document.createElement('a'); link.className = 'message-image'; link.href = attachment.dataUrl; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    const image = document.createElement('img'); image.src = attachment.dataUrl; image.alt = attachment.name || 'Uploaded image'; image.loading = 'lazy';
+    link.append(image); gallery.append(link);
+  }
+  if (gallery.childElementCount) container.append(gallery);
+}
+
+function readImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ id: crypto.randomUUID(), name: file.name, mimeType: file.type, size: file.size, dataUrl: reader.result });
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderImagePreviews() {
+  ui.attachmentPreview.replaceChildren();
+  ui.attachmentPreview.hidden = state.pendingImages.length === 0;
+  for (const attachment of state.pendingImages) {
+    const card = document.createElement('div'); card.className = 'attachment-preview-item';
+    const image = document.createElement('img'); image.src = attachment.dataUrl; image.alt = attachment.name; image.title = attachment.name;
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'attachment-remove'; remove.setAttribute('aria-label', `Remove ${attachment.name}`); remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      state.pendingImages = state.pendingImages.filter(item => item.id !== attachment.id);
+      renderImagePreviews(); resizeComposer();
+    });
+    card.append(image, remove); ui.attachmentPreview.append(card);
+  }
 }
 
 function scrollConversation() {
@@ -266,17 +304,19 @@ function toast(message) {
   toast.timer = setTimeout(() => notice.remove(), 3200);
 }
 
-async function submitMessage(message = ui.messageInput.value) {
+async function submitMessage(message = ui.messageInput.value, attachments = state.pendingImages) {
   const text = message.trim();
-  if (!text || state.sending) return;
+  if ((!text && !attachments.length) || state.sending) return;
   if (!state.activeChatId) {
     try { await createChat(); } catch (error) { toast(error.message); return; }
   }
   state.sending = true;
+  const sentImages = [...attachments];
+  if (attachments === state.pendingImages) { state.pendingImages = []; renderImagePreviews(); }
   ui.messageInput.value = '';
   resizeComposer();
   ui.sendButton.disabled = true;
-  appendMessage('user', text);
+  appendMessage('user', text, { attachments: sentImages });
   const assistant = appendMessage('assistant', '');
   assistant.bubble.innerHTML = '<span class="typing-dots"><i></i><i></i><i></i></span>';
   let fullText = '';
@@ -284,7 +324,7 @@ async function submitMessage(message = ui.messageInput.value) {
   try {
     const response = await fetch(`/api/chats/${state.activeChatId}/messages`, {
       method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': state.csrfToken },
-      body: JSON.stringify({ message: text, model: ui.modelSelect.value })
+      body: JSON.stringify({ message: text, model: ui.modelSelect.value, attachments: sentImages.map(({ name, mimeType, dataUrl }) => ({ name, mimeType, dataUrl })) })
     });
     if (!response.ok) {
       const detail = await response.json().catch(() => ({}));
@@ -339,7 +379,7 @@ async function submitMessage(message = ui.messageInput.value) {
     renderHistory();
   } finally {
     state.sending = false;
-    ui.sendButton.disabled = !ui.messageInput.value.trim();
+    ui.sendButton.disabled = !ui.messageInput.value.trim() && !state.pendingImages.length;
     ui.messageInput.focus();
     scrollConversation();
   }
@@ -358,14 +398,14 @@ async function regenerateLast() {
   try {
     const { messages } = await api(`/api/chats/${state.activeChatId}`);
     const last = [...messages].reverse().find(message => message.role === 'user');
-    if (last) await submitMessage(last.content);
+    if (last) await submitMessage(last.content, last.attachments || []);
   } catch (error) { toast(error.message); }
 }
 
 function resizeComposer() {
   ui.messageInput.style.height = 'auto';
   ui.messageInput.style.height = `${Math.min(ui.messageInput.scrollHeight, 175)}px`;
-  ui.sendButton.disabled = state.sending || !ui.messageInput.value.trim();
+  ui.sendButton.disabled = state.sending || (!ui.messageInput.value.trim() && !state.pendingImages.length);
 }
 
 function closeModelMenu(restoreFocus = false) {
@@ -399,6 +439,21 @@ function chooseModel(value) {
 
 ui.composerForm.addEventListener('submit', event => { event.preventDefault(); submitMessage(); });
 ui.messageInput.addEventListener('input', resizeComposer);
+ui.uploadImageButton.addEventListener('click', () => ui.imageInput.click());
+ui.imageInput.addEventListener('change', async () => {
+  const acceptedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+  const files = [...ui.imageInput.files];
+  ui.imageInput.value = '';
+  if (state.pendingImages.length + files.length > 8) { toast('Add up to 8 images per message.'); return; }
+  const validFiles = files.filter(file => acceptedTypes.includes(file.type));
+  if (validFiles.length !== files.length) toast('Use PNG, JPEG, WebP, or GIF images.');
+  const totalSize = state.pendingImages.reduce((sum, file) => sum + file.size, 0) + validFiles.reduce((sum, file) => sum + file.size, 0);
+  if (totalSize > 6 * 1024 * 1024) { toast('Keep images under 6 MB total per message.'); return; }
+  try {
+    state.pendingImages.push(...await Promise.all(validFiles.map(readImage)));
+    renderImagePreviews(); resizeComposer();
+  } catch (error) { toast(error.message); }
+});
 ui.messageInput.addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); submitMessage(); }
 });
